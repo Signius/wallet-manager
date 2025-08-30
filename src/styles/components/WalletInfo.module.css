@@ -11,6 +11,8 @@
     margin-bottom: var(--spacing-2xl);
 }
 
+
+
 .header h2 {
     margin: 0;
     color: var(--foreground-primary);
@@ -39,6 +41,8 @@
     opacity: 0.7;
     cursor: not-allowed;
 }
+
+
 
 .notConnected {
     text-align: center;

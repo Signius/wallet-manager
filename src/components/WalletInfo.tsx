@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useWallet } from '@meshsdk/react';
 import { WalletService, EnhancedAsset, KoiosAccountInfo } from '../services/walletService';
 import styles from '../styles/components/WalletInfo.module.css';
+import { findAssetImage } from '../utils/assetImageUtils';
 
 export default function WalletInfo() {
     const { connected, wallet } = useWallet();
@@ -49,25 +50,7 @@ export default function WalletInfo() {
                 setBalance(walletInfo.balance);
                 setAccountInfo(walletInfo.accountInfo);
 
-                // Log asset metadata to see where images are stored
-                console.log('=== ASSET METADATA LOG ===');
-                walletInfo.balance.forEach((asset, index) => {
-                    if (asset.unit !== 'lovelace') {
-                        console.log(`Asset ${index + 1}:`, {
-                            unit: asset.unit,
-                            name: asset.assetName,
-                            policyId: asset.policyId,
-                            fingerprint: asset.fingerprint,
-                            quantity: asset.quantity,
-                            decimals: asset.decimals,
-                            assetInfo: asset.assetInfo,
-                            tokenRegistryMetadata: asset.assetInfo?.token_registry_metadata,
-                            cip68Metadata: asset.assetInfo?.cip68_metadata,
-                            mintingTxMetadata: asset.assetInfo?.minting_tx_metadata
-                        });
-                    }
-                });
-                console.log('=== END ASSET METADATA LOG ===');
+
             }
         } catch (error) {
             console.error('Error fetching wallet info:', error);
@@ -121,62 +104,7 @@ export default function WalletInfo() {
 
     const getAssetImage = (asset: EnhancedAsset): string | null => {
         if (asset.unit === 'lovelace') return null;
-
-        // 1. Try to get image from token registry metadata
-        if (asset.assetInfo?.token_registry_metadata?.logo) {
-            const logo = asset.assetInfo.token_registry_metadata.logo;
-            // Check if it's a base64 encoded image or a URL
-            if (logo.startsWith('data:image/') || logo.startsWith('http')) {
-                return logo;
-            }
-            // If it's just base64 data without data URL prefix, add it
-            if (logo.length > 100 && !logo.includes('://')) {
-                return `data:image/png;base64,${logo}`;
-            }
-        }
-
-        // 2. Try to get image from CIP68 metadata
-        if (asset.assetInfo?.cip68_metadata?.image) {
-            return asset.assetInfo.cip68_metadata.image;
-        }
-
-        // 3. Try to get image from minting tx metadata (721 standard)
-        if (asset.assetInfo?.minting_tx_metadata?.['721']) {
-            const metadata721 = asset.assetInfo.minting_tx_metadata['721'];
-
-            // Look for the specific asset in the 721 metadata
-            if (metadata721[asset.policyId] && metadata721[asset.policyId][asset.assetName || '']) {
-                const assetMetadata = metadata721[asset.policyId][asset.assetName || ''];
-                if (assetMetadata && typeof assetMetadata === 'object' && assetMetadata.image) {
-                    return assetMetadata.image;
-                }
-            }
-
-            // Also check for any asset with an image in the policy
-            for (const policyId in metadata721) {
-                const policyMetadata = metadata721[policyId];
-                if (policyMetadata && typeof policyMetadata === 'object') {
-                    for (const assetName in policyMetadata) {
-                        const assetMetadata = policyMetadata[assetName];
-                        if (assetMetadata && typeof assetMetadata === 'object' && assetMetadata.image) {
-                            return assetMetadata.image;
-                        }
-                    }
-                }
-            }
-        }
-
-        // 4. Try to get image from other common metadata fields
-        if (asset.assetInfo?.minting_tx_metadata?.files?.[0]?.src) {
-            return asset.assetInfo.minting_tx_metadata.files[0].src;
-        }
-
-        // 5. Check for image in minting_tx_metadata directly (non-721)
-        if (asset.assetInfo?.minting_tx_metadata?.image) {
-            return asset.assetInfo.minting_tx_metadata.image;
-        }
-
-        return null;
+        return findAssetImage(asset, true); // Enable debug mode
     };
 
     if (!connected || !wallet) {
@@ -299,6 +227,11 @@ export default function WalletInfo() {
                                                     const target = e.target as HTMLImageElement;
                                                     target.style.display = 'none';
                                                     target.nextElementSibling?.classList.remove(styles.hidden);
+                                                }}
+                                                onLoad={(e) => {
+                                                    // Hide placeholder when image loads successfully
+                                                    const target = e.target as HTMLImageElement;
+                                                    target.nextElementSibling?.classList.add(styles.hidden);
                                                 }}
                                             />
                                         ) : null}
