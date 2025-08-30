@@ -1,13 +1,18 @@
-import styles from "../styles/Home.module.css";
+import styles from "../styles/pages/Home.module.css";
+import WalletInfo from "../components/WalletInfo";
 
 export default function Home() {
     return (
         <div className={styles.page}>
             <main className={styles.main}>
-                <h1 className={styles.title}>Welcome to Wallet Manager</h1>
-                <p className={styles.description}>
-                    A simple and secure way to manage your digital wallets
-                </p>
+                <div className={styles.welcomeSection}>
+                    <h1 className={styles.title}>Welcome to Wallet Manager</h1>
+                    <p className={styles.description}>
+                        A simple and secure way to manage your Cardano wallets
+                    </p>
+                </div>
+
+                <WalletInfo />
 
                 <div className={styles.features}>
                     <div className={styles.feature}>

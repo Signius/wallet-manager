@@ -1,0 +1,431 @@
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: var(--spacing-lg);
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-2xl);
+}
+
+.header h2 {
+    margin: 0;
+    color: var(--foreground-primary);
+    font-size: 2rem;
+    font-weight: 700;
+}
+
+.refreshBtn {
+    background: var(--gradient-primary);
+    color: var(--foreground-primary);
+    border: none;
+    padding: var(--spacing-sm) var(--spacing-lg);
+    border-radius: var(--radius-sm);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition-normal);
+}
+
+.refreshBtn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-medium);
+}
+
+.refreshBtn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.notConnected {
+    text-align: center;
+    padding: var(--spacing-2xl) var(--spacing-lg);
+    background: var(--background-card);
+    border-radius: var(--radius-md);
+    border: 2px dashed var(--border-primary);
+}
+
+.notConnected h2 {
+    color: var(--foreground-muted);
+    margin-bottom: var(--spacing-md);
+}
+
+.notConnected p {
+    color: var(--foreground-tertiary);
+    font-size: 1.1rem;
+}
+
+.infoGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--spacing-lg);
+    margin-bottom: var(--spacing-2xl);
+}
+
+.infoCard {
+    background: var(--background-card);
+    padding: var(--spacing-lg);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-small);
+    border: 1px solid var(--border-primary);
+}
+
+.infoCard h3 {
+    margin: 0 0 var(--spacing-sm) 0;
+    color: var(--foreground-secondary);
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.infoCard p {
+    margin: 0;
+    color: var(--foreground-primary);
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.balanceSection {
+    background: var(--background-card);
+    padding: 25px;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-small);
+    border: 1px solid var(--border-primary);
+    margin-bottom: var(--spacing-2xl);
+}
+
+.balanceSection h3 {
+    margin: 0 0 var(--spacing-lg) 0;
+    color: var(--foreground-primary);
+    font-size: 1.3rem;
+    font-weight: 600;
+}
+
+.tokensGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: var(--spacing-lg);
+}
+
+.tokenCard {
+    background: var(--background-secondary);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-primary);
+    padding: var(--spacing-lg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    transition: all var(--transition-normal);
+}
+
+.tokenCard:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-medium);
+}
+
+.tokenImage {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: var(--background-card);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: var(--spacing-md);
+    border: 2px solid var(--border-primary);
+    position: relative;
+}
+
+.adaIcon {
+    font-size: 2rem;
+    color: var(--accent-primary);
+    font-weight: bold;
+}
+
+.tokenImg {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.tokenPlaceholder {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: var(--accent-secondary);
+    color: var(--foreground-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    font-weight: bold;
+}
+
+.hidden {
+    display: none;
+}
+
+.tokenDetails {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+.tokenName {
+    margin: 0;
+    color: var(--foreground-primary);
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.tokenAmount {
+    margin: 0;
+    color: var(--accent-success);
+    font-size: 1.1rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.tokenTicker {
+    margin: 0;
+    color: var(--foreground-muted);
+    font-size: 0.8rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.assets {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+.asset {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-md);
+    background: var(--background-secondary);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-primary);
+}
+
+.assetInfo {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+.assetName {
+    font-weight: 600;
+    color: var(--foreground-primary);
+    font-size: 1rem;
+}
+
+.policyId {
+    font-size: 0.8rem;
+    color: var(--foreground-muted);
+    font-family: var(--font-family-mono);
+}
+
+.quantity {
+    font-weight: 700;
+    color: var(--accent-success);
+    font-size: 1.1rem;
+}
+
+.assetDescription {
+    font-size: 0.8rem;
+    color: var(--foreground-tertiary);
+    font-style: italic;
+}
+
+.accountSection {
+    background: var(--background-card);
+    padding: 25px;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-small);
+    border: 1px solid var(--border-primary);
+    margin-bottom: var(--spacing-2xl);
+}
+
+.accountSection h3 {
+    margin: 0 0 var(--spacing-lg) 0;
+    color: var(--foreground-primary);
+    font-size: 1.3rem;
+    font-weight: 600;
+}
+
+.accountInfo {
+    background: var(--background-secondary);
+    padding: var(--spacing-lg);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-primary);
+    margin-bottom: var(--spacing-md);
+}
+
+.accountRow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-sm) 0;
+    border-bottom: 1px solid var(--border-primary);
+}
+
+.accountRow:last-child {
+    border-bottom: none;
+}
+
+.accountRow .label {
+    color: var(--foreground-secondary);
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.accountRow .value {
+    color: var(--foreground-primary);
+    font-size: 0.9rem;
+    font-weight: 600;
+    font-family: var(--font-family-mono);
+}
+
+.stakeAddressesSection {
+    background: var(--background-card);
+    padding: 25px;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-small);
+    border: 1px solid var(--border-primary);
+    margin-bottom: var(--spacing-2xl);
+}
+
+.stakeAddressesSection h3 {
+    margin: 0 0 var(--spacing-lg) 0;
+    color: var(--foreground-primary);
+    font-size: 1.3rem;
+    font-weight: 600;
+}
+
+.addressesSection {
+    background: var(--background-card);
+    padding: 25px;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-small);
+    border: 1px solid var(--border-primary);
+}
+
+.addressesSection h3 {
+    margin: 0 0 var(--spacing-lg) 0;
+    color: var(--foreground-primary);
+    font-size: 1.3rem;
+    font-weight: 600;
+}
+
+.addressList {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+.address {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-md) var(--spacing-md);
+    background: var(--background-secondary);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-primary);
+}
+
+.addressText {
+    font-family: var(--font-family-mono);
+    color: var(--foreground-secondary);
+    font-size: 0.9rem;
+}
+
+.copyBtn {
+    background: var(--foreground-muted);
+    color: var(--foreground-primary);
+    border: none;
+    padding: 6px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: background-color var(--transition-fast);
+}
+
+.copyBtn:hover {
+    background: var(--foreground-tertiary);
+}
+
+.moreAddresses {
+    text-align: center;
+    color: var(--foreground-muted);
+    font-style: italic;
+    margin: var(--spacing-md) 0 0 0;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .container {
+        padding: var(--spacing-md);
+    }
+
+    .header {
+        flex-direction: column;
+        gap: var(--spacing-md);
+        align-items: flex-start;
+    }
+
+    .header h2 {
+        font-size: 1.5rem;
+    }
+
+    .infoGrid {
+        grid-template-columns: 1fr;
+        gap: var(--spacing-md);
+    }
+
+    .tokensGrid {
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: var(--spacing-md);
+    }
+
+    .tokenCard {
+        padding: var(--spacing-md);
+    }
+
+    .tokenImage {
+        width: 50px;
+        height: 50px;
+    }
+
+    .adaIcon {
+        font-size: 1.5rem;
+    }
+
+    .balanceSection,
+    .addressesSection {
+        padding: var(--spacing-lg);
+    }
+
+    .asset {
+        flex-direction: column;
+        gap: var(--spacing-sm);
+        align-items: flex-start;
+    }
+
+    .address {
+        flex-direction: column;
+        gap: var(--spacing-sm);
+        align-items: flex-start;
+    }
+}

@@ -1,5 +1,7 @@
 import type { AppProps } from "next/app";
 import { Geist, Geist_Mono } from "next/font/google";
+import { MeshProvider } from "@meshsdk/react";
+import Navbar from "../components/Navbar";
 import "../styles/globals.css";
 
 const geistSans = Geist({
@@ -14,8 +16,11 @@ const geistMono = Geist_Mono({
 
 export default function App({ Component, pageProps }: AppProps) {
     return (
-        <div className={`${geistSans.variable} ${geistMono.variable}`}>
-            <Component {...pageProps} />
-        </div>
+        <MeshProvider>
+            <div className={`${geistSans.variable} ${geistMono.variable}`}>
+                <Navbar />
+                <Component {...pageProps} />
+            </div>
+        </MeshProvider>
     );
 }
