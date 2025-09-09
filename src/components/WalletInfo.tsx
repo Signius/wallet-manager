@@ -13,6 +13,8 @@ export default function WalletInfo() {
     const [walletId, setWalletId] = useState<string>('Loading...');
     const [accountInfo, setAccountInfo] = useState<KoiosAccountInfo[]>([]);
     const [stakeAddresses, setStakeAddresses] = useState<string[]>([]);
+    const [isAccountInfoOpen, setIsAccountInfoOpen] = useState(false);
+    const [activeAddressTab, setActiveAddressTab] = useState<'unused' | 'stake'>('unused');
 
     useEffect(() => {
         if (connected && wallet) {
@@ -107,6 +109,13 @@ export default function WalletInfo() {
         return findAssetImage(asset, true); // Enable debug mode
     };
 
+    // Sort assets: ADA first, then by asset name
+    const sortedBalance = balance.sort((a, b) => {
+        if (a.unit === 'lovelace') return -1;
+        if (b.unit === 'lovelace') return 1;
+        return formatAssetName(a).localeCompare(formatAssetName(b));
+    });
+
     if (!connected || !wallet) {
         return (
             <div className={styles.container}>
@@ -155,40 +164,47 @@ export default function WalletInfo() {
 
             {accountInfo.length > 0 && (
                 <div className={styles.accountSection}>
-                    <h3>Account Information</h3>
-                    {accountInfo.map((account, index) => (
-                        <div key={index} className={styles.accountInfo}>
-                            <div className={styles.accountRow}>
-                                <span className={styles.label}>Total Balance:</span>
-                                <span className={styles.value}>
-                                    {formatLovelace(account.total_balance)}
-                                </span>
-                            </div>
-                            <div className={styles.accountRow}>
-                                <span className={styles.label}>UTxO Balance:</span>
-                                <span className={styles.value}>
-                                    {formatLovelace(account.utxo)}
-                                </span>
-                            </div>
-                            <div className={styles.accountRow}>
-                                <span className={styles.label}>Rewards:</span>
-                                <span className={styles.value}>
-                                    {formatLovelace(account.rewards)}
-                                </span>
-                            </div>
-                            {account.delegated_pool && (
-                                <div className={styles.accountRow}>
-                                    <span className={styles.label}>Delegated Pool:</span>
-                                    <span className={styles.value}>
-                                        {account.delegated_pool.pool_name ||
-                                            (account.delegated_pool.pool_id ?
-                                                account.delegated_pool.pool_id.slice(0, 8) + '...' :
-                                                'Unknown Pool')}
-                                    </span>
+                    <div className={styles.sectionHeader} onClick={() => setIsAccountInfoOpen(!isAccountInfoOpen)}>
+                        <h3>Account Information</h3>
+                        <span className={`${styles.chevron} ${isAccountInfoOpen ? styles.chevronOpen : ''}`}>▼</span>
+                    </div>
+                    {isAccountInfoOpen && (
+                        <div className={styles.collapsibleContent}>
+                            {accountInfo.map((account, index) => (
+                                <div key={index} className={styles.accountInfo}>
+                                    <div className={styles.accountRow}>
+                                        <span className={styles.label}>Total Balance:</span>
+                                        <span className={styles.value}>
+                                            {formatLovelace(account.total_balance)}
+                                        </span>
+                                    </div>
+                                    <div className={styles.accountRow}>
+                                        <span className={styles.label}>UTxO Balance:</span>
+                                        <span className={styles.value}>
+                                            {formatLovelace(account.utxo)}
+                                        </span>
+                                    </div>
+                                    <div className={styles.accountRow}>
+                                        <span className={styles.label}>Rewards:</span>
+                                        <span className={styles.value}>
+                                            {formatLovelace(account.rewards)}
+                                        </span>
+                                    </div>
+                                    {account.delegated_pool && (
+                                        <div className={styles.accountRow}>
+                                            <span className={styles.label}>Delegated Pool:</span>
+                                            <span className={styles.value}>
+                                                {account.delegated_pool.pool_name ||
+                                                    (account.delegated_pool.pool_id ?
+                                                        account.delegated_pool.pool_id.slice(0, 8) + '...' :
+                                                        'Unknown Pool')}
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
-                            )}
+                            ))}
                         </div>
-                    ))}
+                    )}
                 </div>
             )}
 
@@ -197,72 +213,85 @@ export default function WalletInfo() {
                 {loading ? (
                     <p>Loading balance...</p>
                 ) : (
-                    <div className={styles.tokensGrid}>
-                        {/* Show ADA first */}
-                        {balance.filter(asset => asset.unit === 'lovelace').map((asset, index) => (
-                            <div key={`ada-${index}`} className={styles.tokenCard}>
-                                <div className={styles.tokenImage}>
-                                    <div className={styles.adaIcon}>₳</div>
-                                </div>
-                                <div className={styles.tokenDetails}>
-                                    <h4 className={styles.tokenName}>ADA</h4>
-                                    <p className={styles.tokenAmount}>{formatAssetQuantity(asset)}</p>
-                                </div>
-                            </div>
-                        ))}
+                    <div className={styles.tokenList}>
+                        <div className={styles.tokenListHeader}>
+                            <div className={styles.tokenHeader}>Asset</div>
+                            <div className={styles.tokenHeader}>Quantity</div>
+                            <div className={styles.tokenHeader}>Value (USD)</div>
+                        </div>
+                        <div className={styles.tokenListBody}>
+                            {sortedBalance.map((asset, index) => {
+                                const imageUrl = getAssetImage(asset);
+                                const isAda = asset.unit === 'lovelace';
 
-                        {/* Show other tokens */}
-                        {balance.filter(asset => asset.unit !== 'lovelace').map((asset, index) => {
-                            const imageUrl = getAssetImage(asset);
-                            return (
-                                <div key={`token-${index}`} className={styles.tokenCard}>
-                                    <div className={styles.tokenImage}>
-                                        {imageUrl ? (
-                                            <img
-                                                src={imageUrl}
-                                                alt={formatAssetName(asset)}
-                                                className={styles.tokenImg}
-                                                onError={(e) => {
-                                                    // Fallback to placeholder if image fails to load
-                                                    const target = e.target as HTMLImageElement;
-                                                    target.style.display = 'none';
-                                                    target.nextElementSibling?.classList.remove(styles.hidden);
-                                                }}
-                                                onLoad={(e) => {
-                                                    // Hide placeholder when image loads successfully
-                                                    const target = e.target as HTMLImageElement;
-                                                    target.nextElementSibling?.classList.add(styles.hidden);
-                                                }}
-                                            />
-                                        ) : null}
-                                        <div className={`${styles.tokenPlaceholder} ${imageUrl ? styles.hidden : ''}`}>
-                                            {formatAssetName(asset).charAt(0).toUpperCase()}
+                                return (
+                                    <div key={`${asset.unit}-${index}`} className={styles.tokenRow}>
+                                        <div className={styles.tokenCell}>
+                                            <div className={styles.tokenImage}>
+                                                {isAda ? (
+                                                    <div className={styles.adaIcon}>₳</div>
+                                                ) : imageUrl ? (
+                                                    <img
+                                                        src={imageUrl}
+                                                        alt={formatAssetName(asset)}
+                                                        className={styles.tokenImg}
+                                                        onError={(e) => {
+                                                            const target = e.target as HTMLImageElement;
+                                                            target.style.display = 'none';
+                                                            const placeholder = target.nextElementSibling as HTMLElement;
+                                                            if(placeholder) placeholder.style.display = 'flex';
+                                                        }}
+                                                    />
+                                                ) : (
+                                                    <div className={styles.tokenPlaceholder}>
+                                                        {formatAssetName(asset).charAt(0).toUpperCase()}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className={styles.tokenInfo}>
+                                                <div className={styles.tokenName}>{formatAssetName(asset)}</div>
+                                                <div className={styles.tokenTicker}>
+                                                    {isAda ? 'Cardano' : asset.assetInfo?.token_registry_metadata?.ticker || asset.unit.slice(0, 12) + "..."}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className={`${styles.tokenCell} ${styles.tokenQuantity}`}>
+                                            {formatAssetQuantity(asset)}
+                                        </div>
+                                        <div className={`${styles.tokenCell} ${styles.tokenValue}`}>
+                                            {/* Placeholder for value */}
+                                            {isAda ? `$${(parseInt(asset.quantity) / 1000000 * 0.35).toFixed(2)}` : 'N/A'}
                                         </div>
                                     </div>
-                                    <div className={styles.tokenDetails}>
-                                        <h4 className={styles.tokenName}>{formatAssetName(asset)}</h4>
-                                        <p className={styles.tokenAmount}>{formatAssetQuantity(asset)}</p>
-                                        {asset.assetInfo?.token_registry_metadata?.ticker && (
-                                            <p className={styles.tokenTicker}>
-                                                {asset.assetInfo.token_registry_metadata.ticker}
-                                            </p>
-                                        )}
-                                    </div>
-                                </div>
-                            );
-                        })}
+                                );
+                            })}
+                        </div>
                     </div>
                 )}
             </div>
 
-            {addresses.length > 0 && (
+            {(addresses.length > 0 || stakeAddresses.length > 0) && (
                 <div className={styles.addressesSection}>
-                    <h3>Unused Addresses</h3>
+                    <div className={styles.addressTabs}>
+                        <button
+                            className={`${styles.tabButton} ${activeAddressTab === 'unused' ? styles.activeTab : ''}`}
+                            onClick={() => setActiveAddressTab('unused')}
+                        >
+                            Unused Addresses ({addresses.length})
+                        </button>
+                        <button
+                            className={`${styles.tabButton} ${activeAddressTab === 'stake' ? styles.activeTab : ''}`}
+                            onClick={() => setActiveAddressTab('stake')}
+                        >
+                            Stake Addresses ({stakeAddresses.length})
+                        </button>
+                    </div>
+
                     <div className={styles.addressList}>
-                        {addresses.slice(0, 3).map((address, index) => (
+                        {activeAddressTab === 'unused' && addresses.map((address, index) => (
                             <div key={index} className={styles.address}>
                                 <span className={styles.addressText}>
-                                    {address.slice(0, 20)}...{address.slice(-8)}
+                                    {address.slice(0, 25)}...{address.slice(-12)}
                                 </span>
                                 <button
                                     onClick={() => navigator.clipboard.writeText(address)}
@@ -273,23 +302,11 @@ export default function WalletInfo() {
                                 </button>
                             </div>
                         ))}
-                        {addresses.length > 3 && (
-                            <p className={styles.moreAddresses}>
-                                And {addresses.length - 3} more addresses...
-                            </p>
-                        )}
-                    </div>
-                </div>
-            )}
 
-            {stakeAddresses.length > 0 && (
-                <div className={styles.stakeAddressesSection}>
-                    <h3>Stake Addresses</h3>
-                    <div className={styles.addressList}>
-                        {stakeAddresses.map((address, index) => (
+                        {activeAddressTab === 'stake' && stakeAddresses.map((address, index) => (
                             <div key={index} className={styles.address}>
                                 <span className={styles.addressText}>
-                                    {address.slice(0, 20)}...{address.slice(-8)}
+                                    {address.slice(0, 25)}...{address.slice(-12)}
                                 </span>
                                 <button
                                     onClick={() => navigator.clipboard.writeText(address)}

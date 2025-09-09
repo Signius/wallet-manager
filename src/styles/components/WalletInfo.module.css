@@ -64,9 +64,9 @@
 
 .infoGrid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: var(--spacing-lg);
-    margin-bottom: var(--spacing-2xl);
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-xl);
 }
 
 .infoCard {
@@ -95,11 +95,11 @@
 
 .balanceSection {
     background: var(--background-card);
-    padding: 25px;
+    padding: var(--spacing-lg);
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-small);
     border: 1px solid var(--border-primary);
-    margin-bottom: var(--spacing-2xl);
+    margin-bottom: var(--spacing-xl);
 }
 
 .balanceSection h3 {
@@ -109,44 +109,83 @@
     font-weight: 600;
 }
 
-.tokensGrid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: var(--spacing-lg);
-}
-
-.tokenCard {
-    background: var(--background-secondary);
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border-primary);
-    padding: var(--spacing-lg);
+/* Token List Styles */
+.tokenList {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    text-align: center;
-    transition: all var(--transition-normal);
+    gap: var(--spacing-sm);
 }
 
-.tokenCard:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-medium);
+.tokenListHeader {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr;
+    padding: var(--spacing-sm) var(--spacing-lg);
+    border-bottom: 2px solid var(--border-primary);
+    background-color: var(--background-secondary);
+}
+
+.tokenHeader {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--foreground-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.tokenHeader:nth-child(2),
+.tokenHeader:nth-child(3) {
+    text-align: right;
+}
+
+.tokenListBody {
+    max-height: 400px; /* Or any height that fits your design */
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+.tokenRow {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr;
+    align-items: center;
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-radius: var(--radius-sm);
+    transition: background-color var(--transition-fast);
+}
+
+.tokenRow:hover {
+    background-color: var(--background-tertiary);
+}
+
+.tokenCell {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.tokenQuantity,
+.tokenValue {
+    justify-content: flex-end;
+    font-family: var(--font-family-mono);
+    font-size: 0.9rem;
 }
 
 .tokenImage {
-    width: 60px;
-    height: 60px;
+    width: 40px;
+    height: 40px;
     border-radius: 50%;
     background: var(--background-card);
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-bottom: var(--spacing-md);
     border: 2px solid var(--border-primary);
     position: relative;
+    flex-shrink: 0;
 }
 
 .adaIcon {
-    font-size: 2rem;
+    font-size: 1.5rem;
     color: var(--accent-primary);
     font-weight: bold;
 }
@@ -175,36 +214,20 @@
     display: none;
 }
 
-.tokenDetails {
-    flex: 1;
+.tokenInfo {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-xs);
 }
 
 .tokenName {
-    margin: 0;
-    color: var(--foreground-primary);
-    font-size: 1rem;
     font-weight: 600;
-    line-height: 1.2;
-}
-
-.tokenAmount {
-    margin: 0;
-    color: var(--accent-success);
-    font-size: 1.1rem;
-    font-weight: 700;
-    line-height: 1.2;
+    color: var(--foreground-primary);
+    font-size: 0.9rem;
 }
 
 .tokenTicker {
-    margin: 0;
-    color: var(--foreground-muted);
     font-size: 0.8rem;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    color: var(--foreground-muted);
 }
 
 .assets {
@@ -255,18 +278,39 @@
 
 .accountSection {
     background: var(--background-card);
-    padding: 25px;
+    padding: var(--spacing-lg);
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-small);
     border: 1px solid var(--border-primary);
-    margin-bottom: var(--spacing-2xl);
+    margin-bottom: var(--spacing-xl);
 }
 
 .accountSection h3 {
-    margin: 0 0 var(--spacing-lg) 0;
+    margin: 0;
     color: var(--foreground-primary);
     font-size: 1.3rem;
     font-weight: 600;
+}
+
+.sectionHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    padding-bottom: var(--spacing-lg);
+}
+
+.chevron {
+    transition: transform 0.2s ease-in-out;
+}
+
+.chevronOpen {
+    transform: rotate(180deg);
+}
+
+.collapsibleContent {
+    padding-top: var(--spacing-lg);
+    border-top: 1px solid var(--border-primary);
 }
 
 .accountInfo {
@@ -302,35 +346,41 @@
     font-family: var(--font-family-mono);
 }
 
-.stakeAddressesSection {
-    background: var(--background-card);
-    padding: 25px;
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-small);
-    border: 1px solid var(--border-primary);
-    margin-bottom: var(--spacing-2xl);
-}
-
-.stakeAddressesSection h3 {
-    margin: 0 0 var(--spacing-lg) 0;
-    color: var(--foreground-primary);
-    font-size: 1.3rem;
-    font-weight: 600;
-}
-
 .addressesSection {
     background: var(--background-card);
-    padding: 25px;
+    padding: var(--spacing-lg);
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-small);
     border: 1px solid var(--border-primary);
 }
 
-.addressesSection h3 {
-    margin: 0 0 var(--spacing-lg) 0;
-    color: var(--foreground-primary);
-    font-size: 1.3rem;
+.addressTabs {
+    display: flex;
+    gap: var(--spacing-sm);
+    border-bottom: 2px solid var(--border-primary);
+    margin-bottom: var(--spacing-lg);
+}
+
+.tabButton {
+    padding: var(--spacing-sm) var(--spacing-md);
+    border: none;
+    background: none;
+    color: var(--foreground-secondary);
+    font-size: 0.9rem;
     font-weight: 600;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all var(--transition-fast);
+    margin-bottom: -2px; /* Align with the container's border */
+}
+
+.tabButton:hover {
+    color: var(--foreground-primary);
+}
+
+.activeTab {
+    color: var(--accent-primary);
+    border-bottom-color: var(--accent-primary);
 }
 
 .addressList {
