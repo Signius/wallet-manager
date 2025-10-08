@@ -176,11 +176,9 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 // Run the orchestrator
-if (require.main === module) {
-    main().catch((error) => {
-        console.error('💥 Main execution failed:', error);
-        process.exit(1);
-    });
-}
+main().catch((error) => {
+    console.error('💥 Main execution failed:', error);
+    process.exit(1);
+});
 
 export { BatchSnapshotOrchestrator };
