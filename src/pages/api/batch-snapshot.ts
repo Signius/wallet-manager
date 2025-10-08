@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { createClient } from '@supabase/supabase-js';
-import { WalletService, KoiosAccountInfo, KoiosAsset } from '../../services/walletService';
+import { KoiosAccountInfo, KoiosAsset } from '../../services/walletService';
 import { ExchangeRateService, ExchangeRates } from '../../services/exchangeRateService';
 
 // Supabase client
@@ -98,9 +98,43 @@ export default async function handler(
         let exchangeRates: ExchangeRates;
 
         try {
+            // Make direct calls to Koios API instead of using WalletService
+            const koiosApiKey = process.env.KOIOS_API_KEY;
+            const headers: Record<string, string> = {
+                'accept': 'application/json',
+                'content-type': 'application/json'
+            };
+
+            if (koiosApiKey) {
+                headers['Authorization'] = `Bearer ${koiosApiKey}`;
+            }
+
             [accountInfo, accountAssets, exchangeRates] = await Promise.all([
-                WalletService.getAccountInfo(stakeAddresses),
-                WalletService.getAccountAssets(stakeAddresses),
+                // Direct call to Koios account_info API
+                fetch('https://api.koios.rest/api/v1/account_info', {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({ _stake_addresses: stakeAddresses })
+                }).then(response => {
+                    if (!response.ok) {
+                        throw new Error(`Koios account_info API error: ${response.status} ${response.statusText}`);
+                    }
+                    return response.json();
+                }),
+                
+                // Direct call to Koios account_assets API
+                fetch('https://api.koios.rest/api/v1/account_assets', {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({ _stake_addresses: stakeAddresses })
+                }).then(response => {
+                    if (!response.ok) {
+                        throw new Error(`Koios account_assets API error: ${response.status} ${response.statusText}`);
+                    }
+                    return response.json();
+                }),
+                
+                // Exchange rate service call
                 ExchangeRateService.getCurrentRates()
             ]);
         } catch (error) {
