@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useWallet } from '@meshsdk/react';
 import { BrowserWallet } from '@meshsdk/core';
+import { WalletService } from '../services/walletService';
 import styles from '../styles/components/Navbar.module.css';
 
 interface WalletInfo {
@@ -60,7 +61,7 @@ export default function Navbar() {
     }, []); // Remove 'connected' dependency to avoid infinite loops
 
     useEffect(() => {
-        // Get wallet balance when wallet is connected
+        // Get wallet balance and store wallet when wallet is connected
         if (connected && wallet) {
             const getBalance = async () => {
                 try {
@@ -70,9 +71,34 @@ export default function Navbar() {
                     console.error('Error getting wallet balance:', error);
                 }
             };
+
+            const storeWallet = async () => {
+                try {
+                    // Get the stake address from the connected wallet
+                    const stakeAddresses = await wallet.getRewardAddresses();
+                    if (stakeAddresses && stakeAddresses.length > 0) {
+                        const stakeAddress = stakeAddresses[0];
+                        console.log('💾 Storing wallet in database with stake address:', stakeAddress);
+                        
+                        const result = await WalletService.storeWallet(stakeAddress, connectedWalletName);
+                        if (result.success) {
+                            console.log('✅ Wallet stored successfully:', result.message);
+                        } else {
+                            console.warn('⚠️ Failed to store wallet:', result.message);
+                        }
+                    } else {
+                        console.warn('⚠️ No stake address found for connected wallet');
+                    }
+                } catch (dbError) {
+                    console.error('❌ Error storing wallet in database:', dbError);
+                    // Don't fail the connection if database storage fails
+                }
+            };
+
             getBalance();
+            storeWallet();
         }
-    }, [connected, wallet]);
+    }, [connected, wallet, connectedWalletName]);
 
     const handleConnect = async (walletId: string) => {
         console.log('🔌 Attempting to connect to wallet ID:', walletId);
@@ -87,6 +113,7 @@ export default function Navbar() {
             const wallet = availableWallets.find(w => w.id === walletId);
             setConnectedWalletName(wallet ? wallet.name : walletId);
             setShowWalletList(false);
+
         } catch (error) {
             console.error('❌ Error connecting wallet:', error);
         }

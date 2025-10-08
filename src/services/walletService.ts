@@ -41,7 +41,7 @@ export interface KoiosAssetInfo {
     mint_cnt: number;
     burn_cnt: number;
     creation_time?: number;
-    minting_tx_metadata?: any;
+    minting_tx_metadata?: Record<string, unknown>;
     token_registry_metadata?: {
         name?: string;
         description?: string;
@@ -50,7 +50,7 @@ export interface KoiosAssetInfo {
         logo?: string;
         decimals?: number;
     };
-    cip68_metadata?: any;
+    cip68_metadata?: Record<string, unknown>;
 }
 
 export interface EnhancedAsset {
@@ -64,7 +64,7 @@ export interface EnhancedAsset {
 }
 
 export class WalletService {
-    private static async fetchFromApi(endpoint: string, data: any): Promise<any> {
+    private static async fetchFromApi<T>(endpoint: string, data: unknown): Promise<T> {
         const response = await fetch(`/api/${endpoint}`, {
             method: 'POST',
             headers: {
@@ -103,7 +103,7 @@ export class WalletService {
                 .map(asset => [asset.policy_id, asset.asset_name || '']);
 
             // Get detailed asset information
-            let assetInfoMap = new Map<string, KoiosAssetInfo>();
+            const assetInfoMap = new Map<string, KoiosAssetInfo>();
             if (assetList.length > 0) {
                 const assetInfos = await this.getAssetInfo(assetList);
                 assetInfos.forEach(info => {
@@ -150,5 +150,16 @@ export class WalletService {
             console.error('Error fetching wallet info:', error);
             throw error;
         }
+    }
+
+    static async storeWallet(stakeAddress: string, walletName?: string): Promise<{
+        success: boolean;
+        wallet_id?: string;
+        message?: string;
+    }> {
+        return this.fetchFromApi('wallet', { 
+            stake_address: stakeAddress, 
+            wallet_name: walletName 
+        });
     }
 }

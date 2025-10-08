@@ -14,7 +14,7 @@ interface AssetInfoResponse {
     mint_cnt: number;
     burn_cnt: number;
     creation_time?: number;
-    minting_tx_metadata?: any;
+    minting_tx_metadata?: Record<string, unknown>;
     token_registry_metadata?: {
         name?: string;
         description?: string;
@@ -23,7 +23,7 @@ interface AssetInfoResponse {
         logo?: string;
         decimals?: number;
     };
-    cip68_metadata?: any;
+    cip68_metadata?: Record<string, unknown>;
 }
 
 export default async function handler(
