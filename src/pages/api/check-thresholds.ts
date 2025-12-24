@@ -1,6 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getSupabaseAdmin } from "../../server/supabaseAdmin";
-import { getTokenPrice } from "../../server/tokenPricing";
 import { computeRebalancePlan } from "../../server/rebalance";
 import { sendDiscordWebhook } from "../../server/discord";
 import { assertSnapshotAuthorized } from "../../server/snapshotAuth";
@@ -14,6 +13,7 @@ type WalletRow = {
   id: string;
   wallet_name: string | null;
   stake_address: string;
+  threshold_basis: "usd" | "ada" | "btc" | "holdings";
   deviation_threshold_pct_points: number;
   swap_fee_bps: number;
   is_active: boolean;
@@ -25,18 +25,28 @@ type SnapshotRow = {
   id: string;
   wallet_id: string;
   snapshot_bucket: string;
-  total_value_ada: number;
-  ada_usd_rate: number;
 };
 
 type SnapshotAssetRow = {
   unit: string;
-  value_ada: number | null;
-  pct_of_portfolio: number | null;
+  quantity_raw: string;
+  decimals: number | null;
+};
+
+type PriceRow = {
+  unit: string;
+  price_usd: number | null;
 };
 
 function formatUnit(unit: string) {
   return unit === "lovelace" ? "ADA" : unit.slice(0, 8) + "…" + unit.slice(-6);
+}
+
+function applyDecimals(quantityRaw: string, decimals?: number | null): number {
+  const q = Number(quantityRaw);
+  if (!Number.isFinite(q)) return 0;
+  if (!decimals || decimals <= 0) return q;
+  return q / Math.pow(10, decimals);
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse<ApiOk | ApiErr>) {
@@ -47,7 +57,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
 
     const { data: wallets, error: wErr } = await supabase
       .from("user_wallets")
-      .select("id, wallet_name, stake_address, deviation_threshold_pct_points, swap_fee_bps, is_active")
+      .select("id, wallet_name, stake_address, threshold_basis, deviation_threshold_pct_points, swap_fee_bps, is_active")
       .eq("is_active", true);
 
     if (wErr) return res.status(500).json({ error: "Failed to fetch wallets" });
@@ -70,7 +80,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
       // Get latest snapshot for this wallet
       const { data: snap, error: sErr } = await supabase
         .from("wallet_snapshots")
-        .select("id, wallet_id, snapshot_bucket, total_value_ada, ada_usd_rate")
+        .select("id, wallet_id, snapshot_bucket")
         .eq("wallet_id", wallet.id)
         .order("snapshot_bucket", { ascending: false })
         .limit(1)
@@ -80,18 +90,82 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
       const snapshot = snap as SnapshotRow;
 
       const { data: assets, error: aErr } = await supabase
-        .from("wallet_snapshot_assets")
-        .select("unit, value_ada, pct_of_portfolio")
+        .from("wallet_snapshot_balances")
+        .select("unit, quantity_raw, decimals")
         .eq("snapshot_id", snapshot.id);
 
       if (aErr || !assets) continue;
 
-      const currentValuesAda: Record<string, number> = {};
-      const currentPct: Record<string, number> = {};
-
+      const quantitiesHuman: Record<string, number> = {};
       for (const a of assets as SnapshotAssetRow[]) {
-        if (a.value_ada != null) currentValuesAda[a.unit] = Number(a.value_ada);
-        if (a.pct_of_portfolio != null) currentPct[a.unit] = Number(a.pct_of_portfolio);
+        quantitiesHuman[a.unit] = applyDecimals(a.quantity_raw, a.decimals);
+      }
+
+      // Load USD prices for the bucket (targets + ADA + BTC)
+      const unitsNeeded = Array.from(new Set(["lovelace", "BTC", ...Object.keys(targetsMap)]));
+      const { data: prices, error: pErr } = await supabase
+        .from("token_price_snapshots")
+        .select("unit, price_usd")
+        .eq("snapshot_bucket", snapshot.snapshot_bucket)
+        .in("unit", unitsNeeded);
+
+      if (pErr) continue;
+
+      const priceUsd: Record<string, number> = {};
+      for (const p of (prices ?? []) as PriceRow[]) {
+        if (p.price_usd != null) priceUsd[p.unit] = Number(p.price_usd);
+      }
+
+      const adaUsd = priceUsd["lovelace"];
+      const btcUsd = priceUsd["BTC"];
+
+      const valueUsdByUnit: Record<string, number> = {};
+      for (const unit of Object.keys(targetsMap)) {
+        const qty = quantitiesHuman[unit] ?? 0;
+        const pu = priceUsd[unit];
+        if (pu != null) valueUsdByUnit[unit] = qty * pu;
+      }
+      // ADA (for allocation math) uses ADA amount and ADAUSD
+      if (adaUsd != null) valueUsdByUnit["lovelace"] = (quantitiesHuman["lovelace"] ?? 0) * adaUsd;
+
+      // Compute allocations based on wallet basis
+      const basis = wallet.threshold_basis ?? "usd";
+      const currentPct: Record<string, number> = {};
+      const missingPrices: string[] = [];
+
+      if (basis === "holdings") {
+        // Quantity-based allocation across targeted units
+        const totalQty = Object.keys(targetsMap).reduce((acc, unit) => acc + (quantitiesHuman[unit] ?? 0), 0);
+        for (const unit of Object.keys(targetsMap)) {
+          currentPct[unit] = totalQty > 0 ? ((quantitiesHuman[unit] ?? 0) / totalQty) * 100 : 0;
+        }
+      } else {
+        for (const unit of Object.keys(targetsMap)) {
+          if (unit !== "lovelace" && priceUsd[unit] == null) missingPrices.push(unit);
+        }
+
+        const totalUsd = Object.keys(targetsMap).reduce((acc, unit) => acc + (valueUsdByUnit[unit] ?? 0), 0);
+        const denom =
+          basis === "usd"
+            ? totalUsd
+            : basis === "ada" && adaUsd
+              ? totalUsd / adaUsd
+              : basis === "btc" && btcUsd
+                ? totalUsd / btcUsd
+                : totalUsd;
+
+        for (const unit of Object.keys(targetsMap)) {
+          const vUsd = valueUsdByUnit[unit] ?? 0;
+          const v =
+            basis === "usd"
+              ? vUsd
+              : basis === "ada" && adaUsd
+                ? vUsd / adaUsd
+                : basis === "btc" && btcUsd
+                  ? vUsd / btcUsd
+                  : vUsd;
+          currentPct[unit] = denom > 0 ? (v / denom) * 100 : 0;
+        }
       }
 
       // Determine deviations for the targeted units
@@ -108,20 +182,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
 
       if (deviations.length === 0) continue;
 
-      // Build a price map for plan generation (ADA prices)
-      const prices: Record<string, { priceAda?: number }> = {};
+      // Build a price map for plan generation (USD)
+      const pricesForPlan: Record<string, { priceUsd?: number }> = {};
       for (const unit of Object.keys(targetsMap)) {
-        const p = getTokenPrice(unit, snapshot.ada_usd_rate);
-        if (p.priceAda != null) prices[unit] = { priceAda: p.priceAda };
+        if (priceUsd[unit] != null) pricesForPlan[unit] = { priceUsd: priceUsd[unit] };
       }
-      // Always include ADA
-      prices["lovelace"] = { priceAda: 1 };
+      // Allow ADA swaps too if ADAUSD exists
+      if (priceUsd["lovelace"] != null) pricesForPlan["lovelace"] = { priceUsd: priceUsd["lovelace"] };
 
+      const totalUsdForPlan = Object.keys(targetsMap).reduce((acc, unit) => acc + (valueUsdByUnit[unit] ?? 0), 0);
       const plan = computeRebalancePlan({
-        totalValueAda: Number(snapshot.total_value_ada),
-        currentValuesAda,
+        totalValueUsd: totalUsdForPlan,
+        currentValuesUsd: valueUsdByUnit,
         targetsPctPoints: targetsMap,
-        prices,
+        prices: pricesForPlan,
         swapFeeBps: Number(wallet.swap_fee_bps ?? 30),
       });
 
@@ -131,7 +205,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
       const contentLines: string[] = [];
       contentLines.push(`**Wallet threshold alert**: ${walletLabel}`);
       contentLines.push(`Snapshot bucket (UTC): ${snapshot.snapshot_bucket}`);
+      contentLines.push(`Threshold basis: ${basis.toUpperCase()}`);
       contentLines.push(`Deviation threshold: ${threshold} percentage points`);
+      if (missingPrices.length) contentLines.push(`Missing prices: ${missingPrices.map(formatUnit).join(", ")}`);
       contentLines.push("");
       contentLines.push("**Deviations** (current → target):");
       for (const d of deviations) {
@@ -146,7 +222,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
       } else {
         for (const s of plan.suggestions.slice(0, 10)) {
           contentLines.push(
-            `- Swap ~${s.fromQtyHuman} ${formatUnit(s.fromUnit)} → ~${s.toQtyHuman} ${formatUnit(s.toUnit)} (value ~${s.tradeValueAda} ADA before fees)`
+            `- Swap ~${s.fromQtyHuman} ${formatUnit(s.fromUnit)} → ~${s.toQtyHuman} ${formatUnit(s.toUnit)} (value ~$${s.tradeValueUsd} before fees)`
           );
         }
       }

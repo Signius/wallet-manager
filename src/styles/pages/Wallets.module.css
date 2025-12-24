@@ -131,6 +131,90 @@
   font-family: var(--font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
 }
 
+.targetsTable {
+  margin-top: var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.targetRow {
+  display: grid;
+  grid-template-columns: 1fr 120px 30px 110px;
+  gap: var(--spacing-sm);
+  align-items: center;
+}
+
+.select {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-primary);
+  background: var(--background-primary);
+  color: var(--foreground-primary);
+}
+
+.percentInput {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-primary);
+  background: var(--background-primary);
+  color: var(--foreground-primary);
+}
+
+.percentLabel {
+  color: var(--foreground-muted);
+}
+
+.targetsActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-md);
+  flex-wrap: wrap;
+}
+
+.secondaryBtn {
+  appearance: none;
+  border-radius: 128px;
+  height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--border-primary);
+  background: var(--background-secondary);
+  color: var(--foreground-primary);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.dangerBtn {
+  appearance: none;
+  border-radius: 128px;
+  height: 38px;
+  padding: 0 14px;
+  border: 1px solid rgba(220, 38, 38, 0.35);
+  background: rgba(220, 38, 38, 0.12);
+  color: var(--foreground-primary);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.dangerBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ok {
+  color: #059669;
+}
+
+.bad {
+  color: #dc2626;
+}
+
 .primaryBtn {
   margin-top: var(--spacing-md);
   appearance: none;
@@ -164,6 +248,54 @@
   width: 100%;
   height: 320px;
   margin-top: var(--spacing-md);
+}
+
+.manualBox {
+  margin-top: var(--spacing-lg);
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--border-primary);
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 16px;
+}
+
+.manualRow {
+  display: grid;
+  grid-template-columns: auto;
+  gap: var(--spacing-md);
+  align-items: center;
+  margin-top: var(--spacing-md);
+}
+
+.settingsRow {
+  margin-top: var(--spacing-md);
+}
+
+.priceGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-md);
+}
+
+.priceCard {
+  border: 1px solid var(--border-primary);
+  background: var(--background-primary);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-md);
+}
+
+.priceUnit {
+  font-weight: 600;
+  color: var(--foreground-primary);
+}
+
+.priceValue {
+  margin-top: 6px;
+  font-family: var(--font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
+  color: var(--foreground-secondary);
 }
 
 @media (max-width: 900px) {

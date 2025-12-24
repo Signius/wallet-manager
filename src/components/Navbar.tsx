@@ -142,6 +142,10 @@ export default function Navbar() {
                         <Link href="/wallets" style={{ color: "inherit", opacity: 0.85, textDecoration: "none", fontSize: 13 }}>
                             Dashboard
                         </Link>
+                        <span style={{ opacity: 0.35, margin: "0 8px" }}>|</span>
+                        <Link href="/tokens" style={{ color: "inherit", opacity: 0.85, textDecoration: "none", fontSize: 13 }}>
+                            Tokens
+                        </Link>
                     </div>
                 </div>
 

@@ -8,6 +8,7 @@ type WalletRow = {
   stake_address: string;
   wallet_name: string | null;
   is_active: boolean;
+  threshold_basis: "usd" | "ada" | "btc" | "holdings";
   deviation_threshold_pct_points: number;
   swap_fee_bps: number;
   created_at: string;
@@ -20,7 +21,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const { data, error } = await supabase
     .from("user_wallets")
     .select(
-      "id, stake_address, wallet_name, is_active, deviation_threshold_pct_points, swap_fee_bps, created_at, updated_at"
+      "id, stake_address, wallet_name, is_active, threshold_basis, deviation_threshold_pct_points, swap_fee_bps, created_at, updated_at"
     )
     .order("created_at", { ascending: false });
 

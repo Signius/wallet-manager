@@ -16,6 +16,7 @@ type WalletRow = {
   stake_address: string;
   wallet_name: string | null;
   is_active: boolean;
+  threshold_basis: "usd" | "ada" | "btc" | "holdings";
   deviation_threshold_pct_points: number;
   swap_fee_bps: number;
 };
@@ -24,10 +25,11 @@ type TargetRow = { unit: string; target_pct_points: number };
 
 type SeriesPoint = {
   snapshot_bucket: string;
-  total_value_ada: number;
-  total_value_usd: number;
-  allocations_pct: Record<string, number>;
+  balances: Record<string, { quantity_raw: string; decimals: number | null }>;
+  prices_usd: Record<string, number>;
 };
+
+type AssetOption = { unit: string; label: string };
 
 function formatUnit(unit: string) {
   return unit === "lovelace" ? "ADA" : unit.slice(0, 8) + "…" + unit.slice(-6);
@@ -39,6 +41,13 @@ function formatTime(iso: string) {
   return d.toISOString().slice(0, 16).replace("T", " ");
 }
 
+function applyDecimals(quantityRaw: string, decimals?: number | null): number {
+  const q = Number(quantityRaw);
+  if (!Number.isFinite(q)) return 0;
+  if (!decimals || decimals <= 0) return q;
+  return q / Math.pow(10, decimals);
+}
+
 export default function WalletsPage() {
   const [wallets, setWallets] = useState<WalletRow[]>([]);
   const [selectedWalletId, setSelectedWalletId] = useState<string | null>(null);
@@ -46,8 +55,11 @@ export default function WalletsPage() {
   const [series, setSeries] = useState<SeriesPoint[]>([]);
   const [newStake, setNewStake] = useState("");
   const [newName, setNewName] = useState("");
-  const [targetDraft, setTargetDraft] = useState("lovelace=50\n<unit>=50");
+  const [targetRows, setTargetRows] = useState<TargetRow[]>([{ unit: "lovelace", target_pct_points: 100 }]);
+  const [assetOptions, setAssetOptions] = useState<AssetOption[]>([{ unit: "lovelace", label: "ADA" }]);
   const [error, setError] = useState<string | null>(null);
+  const [manualBusy, setManualBusy] = useState(false);
+  const [manualResult, setManualResult] = useState<string | null>(null);
 
   const selectedWallet = useMemo(
     () => wallets.find((w) => w.id === selectedWalletId) ?? null,
@@ -67,11 +79,7 @@ export default function WalletsPage() {
     const data = await resp.json();
     if (!resp.ok) throw new Error(data?.error || "Failed to load targets");
     setTargets(data.targets || []);
-    if (data.targets?.length) {
-      setTargetDraft(
-        data.targets.map((t: TargetRow) => `${t.unit}=${t.target_pct_points}`).join("\n")
-      );
-    }
+    if (data.targets?.length) setTargetRows(data.targets as TargetRow[]);
   }
 
   async function loadSeries(walletId: string) {
@@ -79,6 +87,24 @@ export default function WalletsPage() {
     const data = await resp.json();
     if (!resp.ok) throw new Error(data?.error || "Failed to load snapshot series");
     setSeries(data.series || []);
+  }
+
+  async function loadAssetOptions(walletId: string) {
+    const resp = await fetch(`/api/wallets/${walletId}/asset-options`);
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data?.error || "Failed to load token options from Koios");
+
+    const options = (data.options || []) as Array<{ unit: string; label: string }>;
+    // Merge with any existing targets so users don't lose selection if token isn't currently held
+    const targetUnits = (targets || []).map((t) => t.unit);
+    const merged = new Map<string, AssetOption>();
+    for (const o of options) merged.set(o.unit, o);
+    for (const u of targetUnits) {
+      if (!merged.has(u)) merged.set(u, { unit: u, label: formatUnit(u) });
+    }
+    // Ensure ADA is always present
+    if (!merged.has("lovelace")) merged.set("lovelace", { unit: "lovelace", label: "ADA" });
+    setAssetOptions(Array.from(merged.values()));
   }
 
   useEffect(() => {
@@ -98,7 +124,10 @@ export default function WalletsPage() {
     (async () => {
       try {
         setError(null);
-        await Promise.all([loadTargets(selectedWalletId), loadSeries(selectedWalletId)]);
+        // Load targets first so series loading can merge units
+        await loadTargets(selectedWalletId);
+        await loadAssetOptions(selectedWalletId);
+        await loadSeries(selectedWalletId);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       }
@@ -107,17 +136,37 @@ export default function WalletsPage() {
 
   const chartData = useMemo(() => {
     const units = ["lovelace", ...targets.map((t) => t.unit).filter((u) => u !== "lovelace")];
-    return {
-      units,
-      data: series.map((p) => {
-        const row: Record<string, string | number> = {
-          t: p.snapshot_bucket,
-        };
-        for (const unit of units) row[unit] = p.allocations_pct[unit] ?? 0;
-        return row;
-      }),
-    };
-  }, [series, targets]);
+    const basis = selectedWallet?.threshold_basis ?? "usd";
+
+    const data = series.map((p) => {
+      const row: Record<string, string | number> = { t: p.snapshot_bucket };
+      const adaUsd = p.prices_usd["lovelace"];
+      const btcUsd = p.prices_usd["BTC"];
+
+      // Compute values in the chosen basis
+      const values: Record<string, number> = {};
+      for (const u of units) {
+        const bal = p.balances[u];
+        const qty = bal ? applyDecimals(bal.quantity_raw, bal.decimals) : 0;
+        if (basis === "holdings") {
+          values[u] = qty;
+        } else {
+          const pu = p.prices_usd[u];
+          const vUsd = pu != null ? qty * pu : 0;
+          if (basis === "usd") values[u] = vUsd;
+          else if (basis === "ada" && adaUsd) values[u] = vUsd / adaUsd;
+          else if (basis === "btc" && btcUsd) values[u] = vUsd / btcUsd;
+          else values[u] = vUsd;
+        }
+      }
+
+      const denom = Object.values(values).reduce((acc, v) => acc + v, 0);
+      for (const u of units) row[u] = denom > 0 ? (values[u] / denom) * 100 : 0;
+      return row;
+    });
+
+    return { units, data };
+  }, [series, targets, selectedWallet?.threshold_basis]);
 
   async function handleAddWallet() {
     try {
@@ -137,19 +186,34 @@ export default function WalletsPage() {
     }
   }
 
+  const targetSum = useMemo(
+    () => targetRows.reduce((acc, r) => acc + (Number.isFinite(r.target_pct_points) ? r.target_pct_points : 0), 0),
+    [targetRows]
+  );
+
+  const hasDuplicateUnits = useMemo(() => {
+    const seen = new Set<string>();
+    for (const r of targetRows) {
+      if (!r.unit) continue;
+      if (seen.has(r.unit)) return true;
+      seen.add(r.unit);
+    }
+    return false;
+  }, [targetRows]);
+
   async function handleSaveTargets() {
     if (!selectedWalletId) return;
     try {
       setError(null);
-      const parsed = targetDraft
-        .split("\n")
-        .map((l) => l.trim())
-        .filter(Boolean)
-        .map((line) => {
-          const [unitRaw, pctRaw] = line.split("=");
-          return { unit: unitRaw?.trim(), target_pct_points: Number(pctRaw) };
-        })
-        .filter((x) => x.unit && Number.isFinite(x.target_pct_points));
+
+      const parsed = targetRows
+        .map((r) => ({ unit: r.unit, target_pct_points: Number(r.target_pct_points) }))
+        .filter((x) => x.unit && Number.isFinite(x.target_pct_points) && x.target_pct_points >= 0);
+
+      if (parsed.length === 0) throw new Error("Add at least one target token.");
+      if (hasDuplicateUnits) throw new Error("Each token can only appear once in targets.");
+      const sum = parsed.reduce((acc, r) => acc + r.target_pct_points, 0);
+      if (Math.abs(sum - 100) > 0.01) throw new Error(`Targets must sum to 100 (currently ${sum.toFixed(2)})`);
 
       const resp = await fetch(`/api/wallets/${selectedWalletId}/targets`, {
         method: "PUT",
@@ -162,6 +226,54 @@ export default function WalletsPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
+  }
+
+  async function handleManualSnapshot() {
+    if (!selectedWalletId) return;
+    try {
+      setError(null);
+      setManualResult(null);
+      setManualBusy(true);
+
+      const resp = await fetch("/api/manual-snapshot", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ walletId: selectedWalletId }),
+      });
+
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data?.error || "Manual snapshot failed");
+
+      setManualResult(
+        `Snapshot completed (bucket ${data.snapshotBucket}). Processed ${data.processed} wallet(s).${
+          data.errors?.length ? ` Errors: ${data.errors.join("; ")}` : ""
+        }`
+      );
+
+      // refresh charts + options after snapshot
+      await loadSeries(selectedWalletId);
+      await loadAssetOptions(selectedWalletId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setManualBusy(false);
+    }
+  }
+
+  function addTargetRow() {
+    const availableUnits = assetOptions.map((o) => o.unit);
+    const firstAvailable = availableUnits.find((u) => !targetRows.some((r) => r.unit === u)) || "lovelace";
+    setTargetRows((rows) => [...rows, { unit: firstAvailable, target_pct_points: 0 }]);
+  }
+
+  function removeTargetRow(idx: number) {
+    setTargetRows((rows) => rows.filter((_, i) => i !== idx));
+  }
+
+  function updateTargetRow(idx: number, patch: Partial<TargetRow>) {
+    setTargetRows((rows) => rows.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
   }
 
   return (
@@ -230,6 +342,54 @@ export default function WalletsPage() {
                   Deviation threshold: {selectedWallet.deviation_threshold_pct_points}pp • Swap fee:{" "}
                   {(selectedWallet.swap_fee_bps / 100).toFixed(2)}%
                 </div>
+
+                <div className={styles.settingsRow}>
+                  <label className={styles.muted}>
+                    Threshold basis
+                    <select
+                      className={styles.select}
+                      value={selectedWallet.threshold_basis || "usd"}
+                      onChange={async (e) => {
+                        try {
+                          setError(null);
+                          const basis = e.target.value;
+                          const resp = await fetch(`/api/wallets/${selectedWallet.id}/settings`, {
+                            method: "PUT",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ threshold_basis: basis }),
+                          });
+                          const data = await resp.json();
+                          if (!resp.ok) throw new Error(data?.error || "Failed to update basis");
+                          await loadWallets();
+                        } catch (err) {
+                          setError(err instanceof Error ? err.message : String(err));
+                        }
+                      }}
+                    >
+                      <option value="usd">USD value</option>
+                      <option value="btc">BTC value (derived from USD)</option>
+                      <option value="ada">ADA value (derived from USD)</option>
+                      <option value="holdings">Holdings (quantity-based)</option>
+                    </select>
+                  </label>
+                </div>
+
+                <div className={styles.manualBox}>
+                  <h3 className={styles.sectionTitle}>Manual snapshot</h3>
+                  <div className={styles.muted}>
+                    Uses the exact same snapshot pipeline as the cron job. Manual snapshots are limited to once every 10 minutes.
+                  </div>
+                  <div className={styles.manualRow}>
+                    <button
+                      className={styles.primaryBtn}
+                      onClick={handleManualSnapshot}
+                      disabled={manualBusy}
+                    >
+                      {manualBusy ? "Running..." : "Take snapshot now"}
+                    </button>
+                  </div>
+                  {manualResult ? <div className={styles.muted}>{manualResult}</div> : null}
+                </div>
               </div>
 
               <div className={styles.card}>
@@ -262,18 +422,87 @@ export default function WalletsPage() {
               </div>
 
               <div className={styles.card}>
+                <h2>Latest token prices (USD)</h2>
+                {series.length === 0 ? (
+                  <div className={styles.muted}>No snapshots yet.</div>
+                ) : (
+                  (() => {
+                    const last = series[series.length - 1];
+                    const units = Array.from(new Set(["lovelace", "BTC", ...targets.map((t) => t.unit)]));
+                    return (
+                      <div className={styles.priceGrid}>
+                        {units.map((u) => (
+                          <div key={u} className={styles.priceCard}>
+                            <div className={styles.priceUnit}>{formatUnit(u)}</div>
+                            <div className={styles.priceValue}>
+                              {last.prices_usd[u] != null ? `$${Number(last.prices_usd[u]).toFixed(6)}` : "—"}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()
+                )}
+                <div className={styles.muted}>
+                  Note: non-ADA token USD prices currently come from `TOKEN_USD_PRICE_OVERRIDES_JSON` until a DEX/price API is integrated.
+                </div>
+              </div>
+
+              <div className={styles.card}>
                 <h2>Targets (must sum to 100)</h2>
                 <div className={styles.muted}>
-                  Use `lovelace` for ADA. For native tokens use the Cardano unit: `policy_id + asset_name(hex)`.
+                  Pick tokens from the dropdown (from the wallet’s latest snapshot) and set desired allocation %.
                 </div>
-                <textarea
-                  className={styles.textarea}
-                  value={targetDraft}
-                  onChange={(e) => setTargetDraft(e.target.value)}
-                  rows={6}
-                />
+
+                <div className={styles.targetsTable}>
+                  {targetRows.map((row, idx) => (
+                    <div key={`${row.unit}-${idx}`} className={styles.targetRow}>
+                      <select
+                        className={styles.select}
+                        value={row.unit}
+                        onChange={(e) => updateTargetRow(idx, { unit: e.target.value })}
+                      >
+                        {assetOptions.map((o) => (
+                          <option key={o.unit} value={o.unit}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+
+                      <input
+                        className={styles.percentInput}
+                        type="number"
+                        min={0}
+                        step={0.01}
+                        value={row.target_pct_points}
+                        onChange={(e) => updateTargetRow(idx, { target_pct_points: Number(e.target.value) })}
+                      />
+                      <span className={styles.percentLabel}>%</span>
+
+                      <button
+                        type="button"
+                        className={styles.dangerBtn}
+                        onClick={() => removeTargetRow(idx)}
+                        disabled={targetRows.length <= 1}
+                        title="Remove"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+
+                  <div className={styles.targetsActions}>
+                    <button type="button" className={styles.secondaryBtn} onClick={addTargetRow}>
+                      + Add token
+                    </button>
+                    <div className={styles.muted}>
+                      Sum: <strong className={Math.abs(targetSum - 100) <= 0.01 ? styles.ok : styles.bad}>{targetSum.toFixed(2)}%</strong>
+                      {hasDuplicateUnits ? <span className={styles.bad}> • Duplicate token selected</span> : null}
+                    </div>
+                  </div>
+                </div>
                 <div className={styles.row}>
-                  <button className={styles.primaryBtn} onClick={handleSaveTargets}>
+                  <button className={styles.primaryBtn} onClick={handleSaveTargets} disabled={Math.abs(targetSum - 100) > 0.01 || hasDuplicateUnits}>
                     Save targets
                   </button>
                   <div className={styles.muted}>
