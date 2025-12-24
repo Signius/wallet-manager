@@ -42,8 +42,7 @@ class BatchSnapshotOrchestrator {
     private async callBatchSnapshotAPI(batch: number): Promise<BatchSnapshotResponse> {
         const params = new URLSearchParams({
             batch: batch.toString(),
-            batchSize: this.config.batchSize.toString(),
-            authToken: this.config.authToken
+            batchSize: this.config.batchSize.toString()
         });
         
         const url = `${this.config.apiBaseUrl}/api/batch-snapshot?${params}`;
@@ -52,6 +51,8 @@ class BatchSnapshotOrchestrator {
             method: 'GET',
             headers: {
                 'Accept': 'application/json',
+                // Prefer header auth so secrets don't appear in URLs/logs
+                'Authorization': `Bearer ${this.config.authToken}`,
             }
         });
 

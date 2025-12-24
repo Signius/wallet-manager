@@ -1,12 +1,12 @@
-name: Daily Balance Snapshots
+name: Wallet Snapshots (4h) + Threshold Alerts
 
 # This workflow takes daily snapshots of wallet balances and stores them in the database.
 # API requests require SNAPSHOT_AUTH_TOKEN secret to be set in GitHub repository settings.
 
 on:
-  #schedule:
-    # Run at midnight UTC every day
-    #- cron: '0 0 * * *'
+  schedule:
+    # Every 4 hours (UTC)
+    - cron: '0 */4 * * *'
   # Allow manual triggering for testing
   workflow_dispatch:
 
@@ -40,6 +40,15 @@ jobs:
           BATCH_SIZE: 10
           DELAY_BETWEEN_BATCHES: 5
           MAX_RETRIES: 3
+
+      - name: Check thresholds + send Discord alerts
+        run: |
+          curl -sS -X GET "${API_BASE_URL}/api/check-thresholds" \
+            -H "Accept: application/json" \
+            -H "Authorization: Bearer ${SNAPSHOT_AUTH_TOKEN}"
+        env:
+          API_BASE_URL: "https://frolicking-nougat-61d6aa.netlify.app"
+          SNAPSHOT_AUTH_TOKEN: ${{ secrets.SNAPSHOT_AUTH_TOKEN }}
 
       - name: Notify on failure
         if: failure()

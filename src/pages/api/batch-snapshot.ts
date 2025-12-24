@@ -1,13 +1,11 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { createClient } from '@supabase/supabase-js';
 import { KoiosAccountInfo, KoiosAsset } from '../../services/walletService';
 import { ExchangeRateService, ExchangeRates } from '../../services/exchangeRateService';
+import { getSupabaseAdmin } from "../../server/supabaseAdmin";
+import { applyDecimals, getTokenPrice, lovelaceToAda, toIso, toSnapshotBucket } from "../../server/tokenPricing";
+import { assertSnapshotAuthorized } from "../../server/snapshotAuth";
 
-// Supabase client
-const supabase = createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const supabase = getSupabaseAdmin();
 
 
 interface BatchSnapshotResponse {
@@ -27,11 +25,40 @@ interface WalletRecord {
 
 interface SnapshotData {
     wallet_id: string;
-    snapshot_date: string;
+    snapshot_at: string;
+    snapshot_bucket: string;
     ada_balance_lovelace: number;
-    assets: KoiosAsset[];
-    exchange_rate_usd: number;
+    ada_usd_rate: number;
+    total_value_ada: number;
+    total_value_usd: number;
 }
+
+type WalletSnapshotRow = {
+    id: string;
+    wallet_id: string;
+    total_value_ada: number;
+    ada_usd_rate: number;
+};
+
+type WalletSnapshotAssetUpsertRow = {
+    snapshot_id: string;
+    unit: string;
+    quantity: number | string;
+    decimals: number | null;
+    price_ada: number | null;
+    price_usd: number | null;
+    value_ada: number | null;
+    value_usd: number | null;
+    pct_of_portfolio: number | null;
+};
+
+type TokenPriceSnapshotUpsertRow = {
+    snapshot_bucket: string;
+    unit: string;
+    price_ada: number | null;
+    price_usd: number | null;
+    source: string | null;
+};
 
 export default async function handler(
     req: NextApiRequest,
@@ -42,20 +69,20 @@ export default async function handler(
     }
 
     try {
-        const { batch, batchSize, authToken } = req.query;
+        const { batch, batchSize } = req.query;
         
         // Validate required query parameters
-        if (!batch || !batchSize || !authToken) {
-            return res.status(400).json({ error: 'Missing required parameters: batch, batchSize, authToken' });
+        if (!batch || !batchSize) {
+            return res.status(400).json({ error: 'Missing required parameters: batch, batchSize' });
         }
 
         // Parse and validate parameters
         const batchStr = Array.isArray(batch) ? batch[0] : batch;
         const batchSizeStr = Array.isArray(batchSize) ? batchSize[0] : batchSize;
-        const authTokenStr = Array.isArray(authToken) ? authToken[0] : authToken;
-
-        // Validate authentication
-        if (authTokenStr !== process.env.SNAPSHOT_AUTH_TOKEN) {
+        // Validate authentication (header preferred; query param allowed for backward compat)
+        try {
+            assertSnapshotAuthorized(req);
+        } catch {
             return res.status(401).json({ error: 'Unauthorized' });
         }
         
@@ -153,7 +180,10 @@ export default async function handler(
 
         // Prepare snapshot data
         const snapshots: SnapshotData[] = [];
-        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+        const now = new Date();
+        const bucket = toSnapshotBucket(now);
+        const snapshotAtIso = toIso(now);
+        const snapshotBucketIso = toIso(bucket);
 
         for (const wallet of wallets) {
             const walletAccountInfo = accountInfo.find(acc => acc.stake_address === wallet.stake_address);
@@ -167,30 +197,153 @@ export default async function handler(
             // Convert total balance from string to number (comes as string from Koios API)
             const adaBalanceLovelace = parseInt(walletAccountInfo.total_balance, 10) || 0;
 
-            // Filter out ADA (lovelace) from assets since we store it separately
+            // Build unit list (include ADA explicitly)
             const nonAdaAssets = walletAssets.filter(asset => asset.policy_id !== 'lovelace');
+
+            // Compute valuation (ADA + any priced tokens)
+            const ada = lovelaceToAda(adaBalanceLovelace);
+            let totalValueAda = ada;
+            let totalValueUsd = ada * exchangeRates.usd;
+
+            for (const asset of nonAdaAssets) {
+                const unit = `${asset.policy_id}${asset.asset_name || ''}`;
+                const price = getTokenPrice(unit, exchangeRates.usd);
+                const qty = applyDecimals(asset.quantity, asset.decimals);
+
+                if (price.priceAda != null) {
+                    totalValueAda += qty * price.priceAda;
+                }
+                if (price.priceUsd != null) {
+                    totalValueUsd += qty * price.priceUsd;
+                }
+            }
 
             snapshots.push({
                 wallet_id: wallet.id,
-                snapshot_date: today,
                 ada_balance_lovelace: adaBalanceLovelace,
-                assets: nonAdaAssets,
-                exchange_rate_usd: exchangeRates.usd
+                snapshot_at: snapshotAtIso,
+                snapshot_bucket: snapshotBucketIso,
+                ada_usd_rate: exchangeRates.usd,
+                total_value_ada: totalValueAda,
+                total_value_usd: totalValueUsd
             });
         }
 
-        // Insert snapshots into database (upsert to handle duplicates)
+        // Insert snapshots into database (upsert to handle reruns within the same bucket)
         if (snapshots.length > 0) {
             const { error: insertError } = await supabase
                 .from('wallet_snapshots')
-                .upsert(snapshots, {
-                    onConflict: 'wallet_id,snapshot_date',
+                .upsert(snapshots as unknown as Record<string, unknown>[], {
+                    onConflict: 'wallet_id,snapshot_bucket',
                     ignoreDuplicates: false
                 });
 
             if (insertError) {
                 console.error('Error inserting snapshots:', insertError);
                 return res.status(500).json({ error: 'Failed to save snapshots to database' });
+            }
+
+            // Fetch snapshot ids for this bucket to insert asset breakdown
+            const walletIds = snapshots.map(s => s.wallet_id);
+            const { data: snapshotRows, error: snapshotFetchError } = await supabase
+                .from('wallet_snapshots')
+                .select('id, wallet_id, total_value_ada, ada_usd_rate')
+                .in('wallet_id', walletIds)
+                .eq('snapshot_bucket', snapshotBucketIso);
+
+            if (snapshotFetchError) {
+                console.error('Error fetching upserted snapshot rows:', snapshotFetchError);
+                return res.status(500).json({ error: 'Failed to fetch saved snapshots from database' });
+            }
+
+            const snapshotIdByWalletId = new Map<string, { id: string; total_value_ada: number; ada_usd_rate: number }>();
+            (snapshotRows as WalletSnapshotRow[] | null || []).forEach((row) => {
+                snapshotIdByWalletId.set(row.wallet_id, { id: row.id, total_value_ada: row.total_value_ada, ada_usd_rate: row.ada_usd_rate });
+            });
+
+            const snapshotAssetsRows: WalletSnapshotAssetUpsertRow[] = [];
+            const tokenPriceRows: TokenPriceSnapshotUpsertRow[] = [];
+
+            for (const wallet of wallets) {
+                const snap = snapshotIdByWalletId.get(wallet.id);
+                if (!snap) continue;
+
+                const walletAccountInfo = accountInfo.find(acc => acc.stake_address === wallet.stake_address);
+                if (!walletAccountInfo) continue;
+                const adaBalanceLovelace = parseInt(walletAccountInfo.total_balance, 10) || 0;
+                const ada = lovelaceToAda(adaBalanceLovelace);
+
+                const totalAda = Number(snap.total_value_ada) || 0;
+                const pctAda = totalAda > 0 ? (ada / totalAda) * 100 : null;
+
+                snapshotAssetsRows.push({
+                    snapshot_id: snap.id,
+                    unit: 'lovelace',
+                    quantity: adaBalanceLovelace,
+                    decimals: 6,
+                    price_ada: 1,
+                    price_usd: snap.ada_usd_rate,
+                    value_ada: ada,
+                    value_usd: ada * snap.ada_usd_rate,
+                    pct_of_portfolio: pctAda
+                });
+
+                const walletAssets = assetsByAddress.get(wallet.stake_address) || [];
+                const nonAdaAssets = walletAssets.filter(asset => asset.policy_id !== 'lovelace');
+
+                for (const asset of nonAdaAssets) {
+                    const unit = `${asset.policy_id}${asset.asset_name || ''}`;
+                    const price = getTokenPrice(unit, snap.ada_usd_rate);
+                    const qtyHuman = applyDecimals(asset.quantity, asset.decimals);
+
+                    const valueAda = price.priceAda != null ? qtyHuman * price.priceAda : null;
+                    const valueUsd = price.priceUsd != null ? qtyHuman * price.priceUsd : null;
+                    const pct = totalAda > 0 && valueAda != null ? (valueAda / totalAda) * 100 : null;
+
+                    snapshotAssetsRows.push({
+                        snapshot_id: snap.id,
+                        unit,
+                        quantity: asset.quantity,
+                        decimals: asset.decimals ?? null,
+                        price_ada: price.priceAda ?? null,
+                        price_usd: price.priceUsd ?? null,
+                        value_ada: valueAda,
+                        value_usd: valueUsd,
+                        pct_of_portfolio: pct
+                    });
+
+                    if (price.priceAda != null || price.priceUsd != null) {
+                        tokenPriceRows.push({
+                            snapshot_bucket: snapshotBucketIso,
+                            unit,
+                            price_ada: price.priceAda ?? null,
+                            price_usd: price.priceUsd ?? null,
+                            source: price.source ?? null
+                        });
+                    }
+                }
+            }
+
+            if (snapshotAssetsRows.length > 0) {
+                const { error: assetsUpsertError } = await supabase
+                    .from('wallet_snapshot_assets')
+                    .upsert(snapshotAssetsRows, { onConflict: 'snapshot_id,unit', ignoreDuplicates: false });
+
+                if (assetsUpsertError) {
+                    console.error('Error inserting snapshot assets:', assetsUpsertError);
+                    return res.status(500).json({ error: 'Failed to save snapshot assets to database' });
+                }
+            }
+
+            if (tokenPriceRows.length > 0) {
+                const { error: pricesUpsertError } = await supabase
+                    .from('token_price_snapshots')
+                    .upsert(tokenPriceRows, { onConflict: 'snapshot_bucket,unit', ignoreDuplicates: false });
+
+                if (pricesUpsertError) {
+                    console.error('Error inserting token prices:', pricesUpsertError);
+                    // Not fatal; snapshots and assets are still valuable.
+                }
             }
         }
 

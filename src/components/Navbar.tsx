@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useWallet } from '@meshsdk/react';
 import { BrowserWallet } from '@meshsdk/core';
 import { WalletService } from '../services/walletService';
@@ -137,6 +138,11 @@ export default function Navbar() {
             <div className={styles.container}>
                 <div className={styles.logo}>
                     <h1>Wallet Manager</h1>
+                    <div style={{ marginTop: 4 }}>
+                        <Link href="/wallets" style={{ color: "inherit", opacity: 0.85, textDecoration: "none", fontSize: 13 }}>
+                            Dashboard
+                        </Link>
+                    </div>
                 </div>
 
                 <div className={styles.walletSection}>
