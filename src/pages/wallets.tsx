@@ -61,6 +61,21 @@ export default function WalletsPage() {
   const [manualBusy, setManualBusy] = useState(false);
   const [manualResult, setManualResult] = useState<string | null>(null);
 
+  const unitLabelMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const o of assetOptions) {
+      if (o?.unit) m.set(o.unit, o.label || formatUnit(o.unit));
+    }
+    // Ensure common display names
+    m.set("lovelace", "ADA");
+    m.set("BTC", "BTC");
+    return m;
+  }, [assetOptions]);
+
+  function labelForUnit(unit: string) {
+    return unitLabelMap.get(unit) ?? formatUnit(unit);
+  }
+
   const selectedWallet = useMemo(
     () => wallets.find((w) => w.id === selectedWalletId) ?? null,
     [wallets, selectedWalletId]
@@ -132,6 +147,7 @@ export default function WalletsPage() {
         setError(e instanceof Error ? e.message : String(e));
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedWalletId]);
 
   const chartData = useMemo(() => {
@@ -402,14 +418,17 @@ export default function WalletsPage() {
                       <LineChart data={chartData.data}>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="t" tickFormatter={formatTime} minTickGap={24} />
-                        <YAxis domain={[0, 100]} />
-                        <Tooltip labelFormatter={(v) => formatTime(String(v))} />
+                        <YAxis domain={[0, 100]} tickFormatter={(v) => Number(v).toFixed(2)} />
+                        <Tooltip
+                          labelFormatter={(v) => formatTime(String(v))}
+                          formatter={(value, name) => [`${Number(value).toFixed(2)}%`, String(name)]}
+                        />
                         {chartData.units.map((u, idx) => (
                           <Line
                             key={u}
                             type="monotone"
                             dataKey={u}
-                            name={formatUnit(u)}
+                            name={labelForUnit(u)}
                             strokeWidth={2}
                             dot={false}
                             stroke={["#4f46e5", "#059669", "#ea580c", "#dc2626", "#0891b2", "#7c3aed"][idx % 6]}

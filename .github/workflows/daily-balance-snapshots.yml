@@ -35,7 +35,7 @@ jobs:
           cd scripts
           npm start
         env:
-          API_BASE_URL: "https://frolicking-nougat-61d6aa.netlify.app"
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
           SNAPSHOT_AUTH_TOKEN: ${{ secrets.SNAPSHOT_AUTH_TOKEN }}
           BATCH_SIZE: 10
           DELAY_BETWEEN_BATCHES: 5
@@ -47,7 +47,7 @@ jobs:
             -H "Accept: application/json" \
             -H "Authorization: Bearer ${SNAPSHOT_AUTH_TOKEN}"
         env:
-          API_BASE_URL: "https://frolicking-nougat-61d6aa.netlify.app"
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
           SNAPSHOT_AUTH_TOKEN: ${{ secrets.SNAPSHOT_AUTH_TOKEN }}
 
       - name: Notify on failure

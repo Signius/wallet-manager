@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getSupabaseAdmin } from "../../server/supabaseAdmin";
 import { runSnapshotPipeline, type WalletRecord } from "../../server/snapshotPipeline";
+import { runThresholdAlerts } from "../../server/thresholdAlerts";
 
 const supabase = getSupabaseAdmin();
 
@@ -10,6 +11,7 @@ type ManualSnapshotResponse =
       processed: number;
       errors: string[];
       snapshotBucket: string;
+      alertsSent: number;
     }
   | { error: string };
 
@@ -97,11 +99,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
       unitsToPriceUsd: Array.from(unitsToPrice),
     });
 
+    // After snapshotting, evaluate thresholds for these wallets for this bucket and send Discord alerts if needed.
+    // This is intentionally scoped (walletIds + snapshotBucket) to avoid rescanning all wallets and to be idempotent per snapshot.
+    const thresholdResult = await runThresholdAlerts({
+      supabase,
+      walletIds,
+      snapshotBucketIso: result.snapshotBucketIso,
+    });
+
     return res.status(200).json({
       success: true,
       processed: result.processed,
       errors: result.errors,
       snapshotBucket: result.snapshotBucketIso,
+      alertsSent: thresholdResult.alertsSent,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Internal server error";
