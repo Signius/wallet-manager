@@ -2,6 +2,19 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import styles from "../styles/pages/Tokens.module.css";
 
+type WalletRow = {
+  id: string;
+  stake_address: string;
+  wallet_name: string | null;
+  is_active: boolean;
+};
+
+type AssetOption = {
+  unit: string;
+  label: string;
+  ticker?: string | null;
+};
+
 type TokenRow = {
   unit: string;
   display_name: string | null;
@@ -15,9 +28,17 @@ type TokenRow = {
 };
 
 export default function TokensPage() {
+  const [wallets, setWallets] = useState<WalletRow[]>([]);
+  const [selectedWalletId, setSelectedWalletId] = useState<string>("");
+  const [assetOptions, setAssetOptions] = useState<AssetOption[]>([]);
+  const [assetsBusy, setAssetsBusy] = useState(false);
+
   const [tokens, setTokens] = useState<TokenRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const [unitMode, setUnitMode] = useState<"wallet" | "custom">("wallet");
+  const [pickedUnit, setPickedUnit] = useState<string>("");
 
   const [form, setForm] = useState<Partial<TokenRow>>({
     unit: "",
@@ -31,6 +52,23 @@ export default function TokensPage() {
     manual_price_usd: null,
   });
 
+  async function loadWallets() {
+    const resp = await fetch("/api/wallets");
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data?.error || "Failed to load wallets");
+    const ws = (data.wallets || []) as WalletRow[];
+    setWallets(ws);
+    // Default to first wallet (if any) so token dropdown is usable immediately
+    if (!selectedWalletId && ws.length) setSelectedWalletId(ws[0].id);
+  }
+
+  async function loadAssetOptions(walletId: string) {
+    const resp = await fetch(`/api/wallets/${walletId}/asset-options`);
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data?.error || "Failed to load token options from wallet");
+    setAssetOptions((data.options || []) as AssetOption[]);
+  }
+
   async function loadTokens() {
     const resp = await fetch("/api/tokens");
     const data = await resp.json();
@@ -42,12 +80,32 @@ export default function TokensPage() {
     (async () => {
       try {
         setError(null);
+        await loadWallets();
         await loadTokens();
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!selectedWalletId) {
+      setAssetOptions([]);
+      return;
+    }
+    (async () => {
+      try {
+        setAssetsBusy(true);
+        setError(null);
+        await loadAssetOptions(selectedWalletId);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setAssetsBusy(false);
+      }
+    })();
+  }, [selectedWalletId]);
 
   async function upsertToken(row: Partial<TokenRow>) {
     const resp = await fetch("/api/tokens", {
@@ -75,6 +133,8 @@ export default function TokensPage() {
       setBusy(true);
       setError(null);
       await upsertToken(form);
+      setUnitMode("wallet");
+      setPickedUnit("");
       setForm({
         unit: "",
         display_name: "",
@@ -115,11 +175,68 @@ export default function TokensPage() {
         </div>
 
         <div className={styles.formGrid}>
+          <select
+            className={styles.select}
+            value={selectedWalletId}
+            onChange={(e) => {
+              setSelectedWalletId(e.target.value);
+              // Reset picker when wallet changes
+              setPickedUnit("");
+              setUnitMode("wallet");
+              setForm((f) => ({ ...f, unit: "" }));
+            }}
+          >
+            <option value="">Pick wallet (optional)</option>
+            {wallets.map((w) => (
+              <option key={w.id} value={w.id}>
+                {(w.wallet_name || w.stake_address || w.id).slice(0, 48)}
+                {w.is_active ? "" : " (inactive)"}
+              </option>
+            ))}
+          </select>
+
+          <select
+            className={styles.select}
+            value={unitMode === "wallet" ? pickedUnit : "__custom__"}
+            disabled={!selectedWalletId || assetsBusy}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === "__custom__") {
+                setUnitMode("custom");
+                setPickedUnit("");
+                setForm((f) => ({ ...f, unit: String(f.unit || "") }));
+                return;
+              }
+
+              setUnitMode("wallet");
+              setPickedUnit(v);
+              const opt = assetOptions.find((o) => o.unit === v);
+              setForm((f) => ({
+                ...f,
+                unit: v,
+                ticker: f.ticker || opt?.ticker || f.ticker,
+                display_name: f.display_name || (opt?.label && opt.label !== opt?.ticker ? opt.label : f.display_name),
+              }));
+            }}
+          >
+            <option value="">{assetsBusy ? "Loading wallet tokens..." : "Pick token from wallet"}</option>
+            {assetOptions.map((o) => (
+              <option key={o.unit} value={o.unit}>
+                {o.label} ({o.unit === "lovelace" ? "lovelace" : o.unit.slice(0, 8) + "…" + o.unit.slice(-6)})
+              </option>
+            ))}
+            <option value="__custom__">Custom…</option>
+          </select>
+
           <input
             className={styles.input}
             placeholder="unit (lovelace, BTC, or policy+assetNameHex)"
             value={String(form.unit || "")}
-            onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))}
+            onChange={(e) => {
+              setUnitMode("custom");
+              setPickedUnit("");
+              setForm((f) => ({ ...f, unit: e.target.value }));
+            }}
           />
           <input
             className={styles.input}
