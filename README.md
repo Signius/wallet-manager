@@ -9,3 +9,7 @@ This app is a Next.js project. If you deploy on Netlify, you **must** use the Ne
 # Wallet Manager
 
 A modern, secure Cardano wallet management application built with Next.js and the Mesh SDK.
+
+## Last Snapshot Run
+
+Last wallet balance snapshot: `Not yet run`

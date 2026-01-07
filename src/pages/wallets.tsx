@@ -452,7 +452,7 @@ export default function WalletsPage() {
                       <div className={styles.priceGrid}>
                         {units.map((u) => (
                           <div key={u} className={styles.priceCard}>
-                            <div className={styles.priceUnit}>{formatUnit(u)}</div>
+                            <div className={styles.priceUnit}>{labelForUnit(u)}</div>
                             <div className={styles.priceValue}>
                               {last.prices_usd[u] != null ? `$${Number(last.prices_usd[u]).toFixed(6)}` : "—"}
                             </div>

@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getSupabaseAdmin } from "../../../../server/supabaseAdmin";
+import { getBaseUsdRates } from "../../../../server/tokenPriceService";
 
 const supabase = getSupabaseAdmin();
 
@@ -81,6 +82,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (p.price_usd == null) continue;
     if (!pricesByBucket.has(p.snapshot_bucket)) pricesByBucket.set(p.snapshot_bucket, {});
     pricesByBucket.get(p.snapshot_bucket)![p.unit] = Number(p.price_usd);
+  }
+
+  // Fallback: if older snapshots didn't store ADA/BTC prices (e.g. missing tokens table defs),
+  // fill them from Kraken so the UI can still display BTC and compute btc/ada basis charts.
+  let krakenRates: { adaUsd: number; btcUsd: number } | null = null;
+  try {
+    krakenRates = await getBaseUsdRates();
+  } catch {
+    krakenRates = null;
+  }
+
+  for (const b of buckets) {
+    if (!pricesByBucket.has(b)) pricesByBucket.set(b, {});
+    const row = pricesByBucket.get(b)!;
+    if (row["lovelace"] == null && krakenRates?.adaUsd != null) row["lovelace"] = krakenRates.adaUsd;
+    if (row["BTC"] == null && krakenRates?.btcUsd != null) row["BTC"] = krakenRates.btcUsd;
   }
 
   const series = snapshots.map((s) => ({

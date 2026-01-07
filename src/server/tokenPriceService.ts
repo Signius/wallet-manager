@@ -21,6 +21,43 @@ type KrakenTickerResponse = {
   result?: Record<string, { c: string[] }>;
 };
 
+type KrakenUsdRates = { adaUsd: number; btcUsd: number };
+
+async function fetchKrakenAdaBtcUsdRates(): Promise<KrakenUsdRates> {
+  // Kraken uses XBT for BTC
+  const url = "https://api.kraken.com/0/public/Ticker?pair=ADAUSD,XBTUSD";
+  const resp = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!resp.ok) throw new Error(`Kraken API error: ${resp.status} ${resp.statusText}`);
+  const data = (await resp.json()) as KrakenTickerResponse;
+  const result = data.result || {};
+
+  const adaKey = Object.keys(result).find((k) => k.toUpperCase().includes("ADAUSD")) ?? "ADAUSD";
+  const btcKey = Object.keys(result).find((k) => k.toUpperCase().includes("XBTUSD")) ?? "XBTUSD";
+  const ada = Number(result[adaKey]?.c?.[0]);
+  const btc = Number(result[btcKey]?.c?.[0]);
+
+  if (!Number.isFinite(ada) || ada <= 0) throw new Error("Invalid ADAUSD from Kraken");
+  if (!Number.isFinite(btc) || btc <= 0) throw new Error("Invalid BTCUSD from Kraken");
+  return { adaUsd: ada, btcUsd: btc };
+}
+
+export async function getBaseUsdRates(): Promise<KrakenUsdRates> {
+  // 1) Prefer Kraken (fast, no API key)
+  try {
+    return await fetchKrakenAdaBtcUsdRates();
+  } catch {
+    // fall through
+  }
+
+  // 2) Fallback to CoinGecko
+  const cg = await fetchCoinGeckoUsd(["bitcoin", "cardano"]);
+  const btc = cg["bitcoin"];
+  const ada = cg["cardano"];
+  if (!Number.isFinite(ada) || ada <= 0) throw new Error("Invalid ADAUSD from CoinGecko");
+  if (!Number.isFinite(btc) || btc <= 0) throw new Error("Invalid BTCUSD from CoinGecko");
+  return { adaUsd: ada, btcUsd: btc };
+}
+
 async function fetchKrakenPairsUsd(pairs: string[]): Promise<Record<string, number>> {
   if (pairs.length === 0) return {};
   const unique = Array.from(new Set(pairs.filter(Boolean)));
@@ -78,6 +115,17 @@ export async function getTokenUsdPrices(params: {
   const units = Array.from(new Set(params.units.filter(Boolean)));
   if (units.length === 0) return [];
 
+  // Always be able to price ADA + BTC even if there is no `tokens` table definition for them.
+  // This avoids UI gaps (BTC showing "—") and keeps BTC/ADA basis math working.
+  let krakenRates: KrakenUsdRates | null = null;
+  if (units.includes("lovelace") || units.includes("BTC")) {
+    try {
+      krakenRates = await getBaseUsdRates();
+    } catch {
+      krakenRates = null;
+    }
+  }
+
   const tokensTable = params.supabase.from("tokens") as {
     select: (cols: string) => {
       in: (col: string, vals: string[]) => Promise<{ data: unknown; error: unknown | null }>;
@@ -122,6 +170,26 @@ export async function getTokenUsdPrices(params: {
 
   const results: TokenUsdPriceResult[] = [];
   for (const unit of units) {
+    if (unit === "lovelace") {
+      results.push({
+        unit,
+        priceUsd: krakenRates?.adaUsd ?? null,
+        source: krakenRates ? "kraken:ADAUSD" : null,
+        error: krakenRates ? undefined : "Failed to fetch ADAUSD from Kraken",
+      });
+      continue;
+    }
+
+    if (unit === "BTC") {
+      results.push({
+        unit,
+        priceUsd: krakenRates?.btcUsd ?? null,
+        source: krakenRates ? "kraken:BTCUSD" : null,
+        error: krakenRates ? undefined : "Failed to fetch BTCUSD from Kraken",
+      });
+      continue;
+    }
+
     const def = defByUnit.get(unit);
     if (!def) {
       results.push({ unit, priceUsd: null, source: null, error: "No token definition" });

@@ -14,10 +14,14 @@ jobs:
   snapshot-balances:
     runs-on: ubuntu-latest
     timeout-minutes: 300  # 5 hours timeout (GitHub Actions max is 6 hours)
+    permissions:
+      contents: write  # Required to commit and push changes to README
     
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
         
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -49,6 +53,26 @@ jobs:
         env:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           SNAPSHOT_AUTH_TOKEN: ${{ secrets.SNAPSHOT_AUTH_TOKEN }}
+
+      - name: Update README with last snapshot timestamp
+        continue-on-error: true
+        run: |
+          # Get current timestamp in UTC
+          TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          
+          # Update README.md with the timestamp (Linux sed syntax for ubuntu-latest)
+          sed -i "s/Last wallet balance snapshot: \`.*\`/Last wallet balance snapshot: \`$TIMESTAMP\`/" README.md
+          
+          # Configure git
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          # Commit and push if there are changes
+          git diff --quiet README.md || {
+            git add README.md
+            git commit -m "Update last snapshot timestamp: $TIMESTAMP"
+            git push
+          }
 
       - name: Notify on failure
         if: failure()
