@@ -90,18 +90,64 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const infoMap = new Map<string, AssetInfoRow>();
   if (assetList.length > 0) {
-    const infoResp = await fetch("https://api.koios.rest/api/v1/asset_info", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ _asset_list: assetList }),
-    });
-
-    if (infoResp.ok) {
-      const infos = (await infoResp.json()) as AssetInfoRow[];
-      for (const i of infos) {
-        const key = `${i.policy_id}${i.asset_name || ""}`;
-        infoMap.set(key, i);
+    // Helper function to fetch asset info with automatic retry/splitting on 413 errors
+    const fetchAssetInfoBatch = async (batch: [string, string][]): Promise<AssetInfoRow[]> => {
+      if (batch.length === 0) {
+        return [];
       }
+
+      const infoResp = await fetch("https://api.koios.rest/api/v1/asset_info", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ _asset_list: batch }),
+      });
+
+      if (infoResp.ok) {
+        return (await infoResp.json()) as AssetInfoRow[];
+      }
+
+      // If we get 413 and have more than 1 item, split the batch in half and retry
+      if (infoResp.status === 413 && batch.length > 1) {
+        console.log(`Batch of ${batch.length} assets too large in asset-options, splitting...`);
+        const mid = Math.floor(batch.length / 2);
+        const firstHalf = batch.slice(0, mid);
+        const secondHalf = batch.slice(mid);
+        
+        // Recursively fetch both halves
+        const [firstResult, secondResult] = await Promise.all([
+          fetchAssetInfoBatch(firstHalf),
+          fetchAssetInfoBatch(secondHalf)
+        ]);
+        
+        return [...firstResult, ...secondResult];
+      }
+
+      // If we get 413 with a single asset, log it
+      if (infoResp.status === 413 && batch.length === 1) {
+        console.error(`Single asset too large for API in asset-options: ${batch[0][0]}${batch[0][1]}`);
+      }
+
+      // For other errors, return empty array (non-fatal)
+      return [];
+    };
+
+    // Batch the requests to avoid 413 Request Entity Too Large errors
+    // Start small to be safe - Koios API has strict limits
+    const INITIAL_BATCH_SIZE = 10;
+    const batches: [string, string][][] = [];
+    for (let i = 0; i < assetList.length; i += INITIAL_BATCH_SIZE) {
+      batches.push(assetList.slice(i, i + INITIAL_BATCH_SIZE));
+    }
+
+    // Fetch all batches in parallel (with automatic retry/splitting on 413)
+    const batchResults = await Promise.all(
+      batches.map(batch => fetchAssetInfoBatch(batch))
+    );
+    const infos = batchResults.flat();
+
+    for (const i of infos) {
+      const key = `${i.policy_id}${i.asset_name || ""}`;
+      infoMap.set(key, i);
     }
   }
 
