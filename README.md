@@ -12,4 +12,4 @@ A modern, secure Cardano wallet management application built with Next.js and th
 
 ## Last Snapshot Run
 
-Last wallet balance snapshot: `2026-01-14 16:14:18 UTC`
+Last wallet balance snapshot: `2026-01-14 20:01:45 UTC`
